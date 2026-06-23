@@ -37,7 +37,7 @@ class Bird:
     img0 = pg.transform.rotozoom(pg.image.load("fig/3.png"), 0, 0.9)
     img = pg.transform.flip(img0, True, False)  # デフォルトのこうかとん（右向き）
     imgs = {  # 0度から反時計回りに定義
-        (0, 0):   img,  # 🎯 停止時（ここを修正追加しました。これでKeyErrorを完全に防ぎます）
+        (0, 0):   img,  # 停止時
         (+5, 0):  img,  # 右
         (+5, -5): pg.transform.rotozoom(img, 45, 0.9),  # 右上
         (0, -5):  pg.transform.rotozoom(img, 90, 0.9),  # 上
@@ -53,9 +53,10 @@ class Bird:
         こうかとん画像Surfaceを生成する
         引数 xy：こうかとん画像の初期位置座標タプル
         """
-        self.img = __class__.imgs[(0, 0)]  # 🎯 初期状態も(0, 0)を参照するように修正
+        self.img = __class__.imgs[(0, 0)]
         self.rct: pg.Rect = self.img.get_rect()
         self.rct.center = xy
+        self.dire = (+5, 0)  # 🎯 最後に移動した方向（デフォルトは右）を保持
 
     def change_img(self, num: int, screen: pg.Surface):
         """
@@ -82,6 +83,7 @@ class Bird:
             self.rct.move_ip(-sum_mv[0], -sum_mv[1])
         if not (sum_mv[0] == 0 and sum_mv[1] == 0):
             self.img = __class__.imgs[tuple(sum_mv)]
+            self.dire = tuple(sum_mv)  # 🎯 動いている方向を記録
         screen.blit(self.img, self.rct)
 
 
@@ -94,20 +96,25 @@ class Beam:
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん（Birdインスタンス）
         """
-        self.img = pg.image.load(f"fig/beam.png")
+        self.img = pg.image.load("fig/beam.png")
         self.rct = self.img.get_rect()
-        self.rct.centery = bird.rct.centery  # ビームの中心縦座標 = こうかとんの中心縦座標
-        self.rct.left = bird.rct.right  # ビームの左座標 = こうかとんの右座標
-        self.vx, self.vy = +5, 0
+        self.rct.center = bird.rct.center  # ビームの初期位置をこうかとんの中心にする
+        
+        # 🎯 こうかとんの移動方向（8方向）に合わせて速度ベクトルを設定
+        self.vx, self.vy = bird.dire
+        
+        # 🎯 斜め移動のとき速度が速くなりすぎないよう調整（必要に応じて調整）
+        # ビームの進行方向をわかりやすくするため、少し速度を速く（1.5倍）します
+        self.vx = int(self.vx * 1.5)
+        self.vy = int(self.vy * 1.5)
 
     def update(self, screen: pg.Surface):
         """
         ビームを速度ベクトルself.vx, self.vyに基づき移動させる
         引数 screen：画面Surface
         """
-        if check_bound(self.rct) == (True, True):
-            self.rct.move_ip(self.vx, self.vy)
-            screen.blit(self.img, self.rct)    
+        self.rct.move_ip(self.vx, self.vy)
+        screen.blit(self.img, self.rct)    
 
 
 class Bomb:
@@ -124,8 +131,9 @@ class Bomb:
         pg.draw.circle(self.img, color, (rad, rad), rad)
         self.img.set_colorkey((0, 0, 0))
         self.rct = self.img.get_rect()
-        self.rct.center = random.randint(0, WIDTH), random.randint(0, HEIGHT)
-        self.vx, self.vy = +5, +5
+        # こうかとんの初期位置(300, 200)と被らない位置に生成
+        self.rct.center = random.randint(500, WIDTH-100), random.randint(100, HEIGHT-100)
+        self.vx, self.vy = random.choice([-5, +5]), random.choice([-5, +5])
 
     def update(self, screen: pg.Surface):
         """
@@ -146,63 +154,72 @@ def main():
     screen = pg.display.set_mode((WIDTH, HEIGHT))    
     bg_img = pg.image.load("fig/pg_bg.jpg")
     bird = Bird((300, 200))
-    bomb = Bomb((255, 0, 0), 10)
-    beam = None  # ゲーム初期化時にはビームは存在しない
+    
+    # 複数の爆弾（5個）を作成
+    bombs = [Bomb((255, 0, 0), 10) for _ in range(5)]
+    
+    beam = None  # 初期状態ではビームは存在しない
+    
+    # 爆発エフェクト用の変数
+    exp_tmr = 0
+    exp_rct = None
+    
     clock = pg.time.Clock()
-    tmr = 0
     
     while True:
+        # イベント処理ループ
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return
+            # スペースキー押下でビームを新しく生成
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                # スペースキー押下でBeamクラスのインスタンス生成
                 beam = Beam(bird)            
         
         screen.blit(bg_img, [0, 0])
 
-        # 衝突判定（こうかとん vs 爆弾）
-        if bomb is not None:
-            if bird.rct.colliderect(bomb.rct):
-                # ゲームオーバー時にこうかとん画像を切り替え、1秒間表示させる
+        # すべての衝突判定を一元管理する安全な処理
+        hit_bomb = None
+        for b_obj in bombs:
+            # 1. こうかとんと爆弾の衝突（ゲームオーバー）
+            if bird.rct.colliderect(b_obj.rct):
                 bird.change_img(8, screen)
                 pg.display.update()
                 time.sleep(1)
                 return
             
-        # 衝突判定（ビーム vs 爆弾）
-        if beam is not None and beam.rct.colliderect(bomb.rct):
-            # 🎯 爆発エフェクト用の位置とタイマーを記録する（追加）
-            exp_rct = bomb.rct.copy()
-            exp_tmr = 20  # 20フレームの間、爆発を表示する
-
-            bombs.remove(bomb)
-            beam = None
-            exp_tmr = 0  # 🎯 最初は爆発していないので0
-            exp_rct = None
-            break
+            # 2. ビームと爆弾の衝突（ビームが存在するときのみ判定）
+            if beam is not None and beam.rct.colliderect(b_obj.rct):
+                hit_bomb = b_obj
+                break
+        
+        # もしビームが爆弾に当たっていたら、安全にリストから消去してエフェクトを出す
+        if hit_bomb is not None:
+            exp_rct = hit_bomb.rct.copy()
+            exp_tmr = 20            # 爆発タイマーセット
+            bombs.remove(hit_bomb)  # リストから爆弾を消す
+            beam = None             # ビームを消す
                         
-        # 各オブジェクトのアップデート
+        # 各種アップデートと描画
         key_lst = pg.key.get_pressed()
         bird.update(key_lst, screen)
         
-        if beam is not None:  # beamが出現していたら
-            beam.update(screen)   
+        # ビームの移動と画面外判定
+        if beam is not None:
+            beam.update(screen)
+            # 画面外に出たらビームを消滅させる
+            if check_bound(beam.rct) != (True, True):
+                beam = None
             
-        if bomb is not None:
-            bomb.update(screen)
+        # 爆弾の移動と描画
+        for b_obj in bombs:
+            b_obj.update(screen)
         
-        # 🎯 爆発エフェクトの描画（追加）
+        # 爆発エフェクトの描画
         if exp_tmr > 0 and exp_rct is not None:
-            # 爆弾が消えた場所に、だんだん小さくなる（または大きくなる）円を描く
-            pg.draw.circle(screen, (255, 165, 0), exp_rct.center, exp_tmr * 2)
-            exp_tmr -= 1  # タイマーを1ずつ減らす
+            pg.draw.circle(screen, (255, 165, 0), exp_rct.center, (21 - exp_tmr) * 3)
+            exp_tmr -= 1
     
-    
-        pg.display.update()  # 元からある行
-        
         pg.display.update()
-        tmr += 1
         clock.tick(50)
 
 
