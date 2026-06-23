@@ -171,7 +171,7 @@ def main():
                 return
             
         # 衝突判定（ビーム vs 爆弾）
-        if beam.rct.colliderect(bomb.rct):
+        if beam is not None and beam.rct.colliderect(bomb.rct):
             # 🎯 爆発エフェクト用の位置とタイマーを記録する（追加）
             exp_rct = bomb.rct.copy()
             exp_tmr = 20  # 20フレームの間、爆発を表示する
@@ -193,7 +193,7 @@ def main():
             bomb.update(screen)
         
         # 🎯 爆発エフェクトの描画（追加）
-        if exp_tmr > 0:
+        if exp_tmr > 0 and exp_rct is not None:
             # 爆弾が消えた場所に、だんだん小さくなる（または大きくなる）円を描く
             pg.draw.circle(screen, (255, 165, 0), exp_rct.center, exp_tmr * 2)
             exp_tmr -= 1  # タイマーを1ずつ減らす
