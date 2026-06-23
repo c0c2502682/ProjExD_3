@@ -164,6 +164,12 @@ def main():
     exp_tmr = 0
     exp_rct = None
     
+    # スコア管理用
+    score = 0
+    font_score = pg.font.Font(None, 40)  # スコア用のフォント（サイズ40）
+    
+    # ゲームオーバー画面用
+    font_gameover = pg.font.Font(None, 80)  # 「GAME OVER」用の大きいフォント（サイズ80）
     clock = pg.time.Clock()
     
     while True:
@@ -178,13 +184,23 @@ def main():
         screen.blit(bg_img, [0, 0])
 
         # すべての衝突判定を一元管理する安全な処理
+        # すべての衝突判定を一元管理する安全な処理
         hit_bomb = None
         for b_obj in bombs:
             # 1. こうかとんと爆弾の衝突（ゲームオーバー）
             if bird.rct.colliderect(b_obj.rct):
-                bird.change_img(8, screen)
-                pg.display.update()
-                time.sleep(1)
+                bird.change_img(8, screen)  # 泣いているこうかとんに切り替え
+                
+
+                # 「GAME OVER」の文字画像を生成
+                txt_gameover = font_gameover.render("GAME OVER", True, (255, 0, 0))  # 赤色
+                rct_gameover = txt_gameover.get_rect()
+                rct_gameover.center = (WIDTH // 2, HEIGHT // 2)  # 画面のど真ん中に位置合わせ
+                
+                screen.blit(txt_gameover, rct_gameover)  # 画面中央に貼り付け
+                pg.display.update()                     # 文字を表示するために画面を即時更新
+                time.sleep(3)                           # 3秒間そのまま待つ
+                
                 return
             
             # 2. ビームと爆弾の衝突（ビームが存在するときのみ判定）
@@ -198,7 +214,7 @@ def main():
             exp_tmr = 20            # 爆発タイマーセット
             bombs.remove(hit_bomb)  # リストから爆弾を消す
             beam = None             # ビームを消す
-                        
+            score += 10             # スコアを10点加算
         # 各種アップデートと描画
         key_lst = pg.key.get_pressed()
         bird.update(key_lst, screen)
@@ -218,7 +234,11 @@ def main():
         if exp_tmr > 0 and exp_rct is not None:
             pg.draw.circle(screen, (255, 165, 0), exp_rct.center, (21 - exp_tmr) * 3)
             exp_tmr -= 1
-    
+
+# スコアの文字画像を生成（文字列, 滑らかにするか, 色）
+        txt_score = font_score.render(f"SCORE: {score}", True, (0, 0, 0))  # 黒色で描画
+        screen.blit(txt_score, [WIDTH - 200, 30])  # 画面の右上（端から少し内側）に貼り付け
+        
         pg.display.update()
         clock.tick(50)
 
