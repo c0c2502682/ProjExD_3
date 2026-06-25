@@ -1,3 +1,4 @@
+# Issue #2 対応: コード全体の最終確認完了
 import os
 import random
 import sys
